@@ -176,15 +176,28 @@ function parseStreamText(text: string, sourceUrl: string): NormalizedConversatio
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (/^(user|human|you):?$/i.test(trimmed)) {
+    // Match standalone or inline user label: e.g. "User:", "**User:**", "User: Hello"
+    const userMatch = trimmed.match(/^(?:\*\*)?(?:user|human|you)(?:\*\*)?:\s*(.*)$/i);
+    if (userMatch) {
       flush();
       currentRole = 'user';
-      continue;
-    } else if (/^(assistant|chatgpt|claude|gemini|grok|meta|perplexity):?$/i.test(trimmed)) {
-      flush();
-      currentRole = 'assistant';
+      if (userMatch[1]) {
+        currentLines.push(userMatch[1]);
+      }
       continue;
     }
+
+    // Match standalone or inline assistant label: e.g. "Assistant:", "**Assistant:**", "Assistant: Hello"
+    const assistantMatch = trimmed.match(/^(?:\*\*)?(?:assistant|chatgpt|claude|gemini|grok|meta(?:\s*ai)?|perplexity)(?:\*\*)?:\s*(.*)$/i);
+    if (assistantMatch) {
+      flush();
+      currentRole = 'assistant';
+      if (assistantMatch[1]) {
+        currentLines.push(assistantMatch[1]);
+      }
+      continue;
+    }
+
     currentLines.push(line);
   }
   flush();

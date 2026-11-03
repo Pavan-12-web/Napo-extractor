@@ -157,6 +157,45 @@ export function sanitizeCleanText(text: string): string {
   cleaned = cleaned.replace(/[\uE000-\uF8FF][\s\S]*?[\uE000-\uF8FF]/g, '');
   cleaned = cleaned.replace(/[\uE000-\uF8FF]/g, '');
 
+  // 1b. Transform interactive ask_user_input questions into readable plain English
+  while (cleaned.includes('{"ask_user_input":')) {
+    const idx = cleaned.indexOf('{"ask_user_input":');
+    let depth = 0;
+    let endIdx = -1;
+    for (let i = idx; i < cleaned.length; i++) {
+      if (cleaned[i] === '{') depth++;
+      else if (cleaned[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          endIdx = i + 1;
+          break;
+        }
+      }
+    }
+    if (endIdx !== -1) {
+      const jsonStr = cleaned.slice(idx, endIdx);
+      let replacement = '';
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const questions = parsed?.ask_user_input?.questions;
+        if (Array.isArray(questions)) {
+          replacement = '\n\n' + questions.map((q: any, i: number) => `${i + 1}. ${q.question || q}`).join('\n') + '\n';
+        }
+      } catch {
+        const qMatches = Array.from(jsonStr.matchAll(/"question":\s*"([^"]+)"/g)).map(m => m[1]);
+        if (qMatches.length > 0) {
+          replacement = '\n\n' + qMatches.map((q, i) => `${i + 1}. ${q}`).join('\n') + '\n';
+        }
+      }
+      cleaned = cleaned.slice(0, idx) + replacement + cleaned.slice(endIdx);
+    } else {
+      break;
+    }
+  }
+
+  // 1c. Strip other raw tool JSON blobs
+  cleaned = cleaned.replace(/\{"(?:tool_uses|call|widget|thought)":[\s\S]*?\}/g, '');
+
   // 2. Remove plugin redaction and system placeholder notices
   cleaned = cleaned.replace(/The output of this plugin was redacted\.?/gi, '');
   cleaned = cleaned.replace(/Original custom instructions no longer available\.?/gi, '');

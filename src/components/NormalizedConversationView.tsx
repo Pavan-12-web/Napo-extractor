@@ -10,10 +10,12 @@ import { Download, Copy, Check, User, Bot, FileText } from 'lucide-react';
 
 interface NormalizedConversationViewProps {
   conversation: NormalizedConversation;
+  onReset?: () => void;
 }
 
 export const NormalizedConversationView: React.FC<NormalizedConversationViewProps> = ({
   conversation,
+  onReset,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -27,7 +29,7 @@ export const NormalizedConversationView: React.FC<NormalizedConversationViewProp
   return (
     <div className="space-y-6">
       {/* Top Action Bar: Download & Copy Plain English Text */}
-      <div className="bg-[#0b101c] border border-blue-500/40 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <div className="bg-[#0b101c] border border-[#1b263b] rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-white tracking-tight">
             Extracted Plain English Conversation
@@ -44,7 +46,7 @@ export const NormalizedConversationView: React.FC<NormalizedConversationViewProp
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-blue-900/30 flex items-center justify-center gap-2 cursor-pointer"
           >
             <Download className="w-4 h-4 stroke-[2.5]" />
-            <span>Download Plain Text (.md)</span>
+            <span>Download Markdown (.md)</span>
           </button>
 
           {/* Secondary Action: Download .txt */}
@@ -69,10 +71,20 @@ export const NormalizedConversationView: React.FC<NormalizedConversationViewProp
             ) : (
               <>
                 <Copy className="w-4 h-4 text-slate-300" />
-                <span>Copy Plain Text</span>
+                <span>Copy Text</span>
               </>
             )}
           </button>
+
+          {/* Reset / Extract Another */}
+          {onReset && (
+            <button
+              onClick={onReset}
+              className="px-3.5 py-2.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              Extract another
+            </button>
+          )}
         </div>
       </div>
 
