@@ -1,6 +1,6 @@
 {
-  "summary": "Plan to remove all metadata from extracted outputs and downloads, ensuring both on-screen text and exported files contain only the plain English conversation context with clean speaker labels, and completely removing the Gemini API integration.",
-  "updatedAt": "2026-11-03T08:13:03.178600691Z",
+  "summary": "Implementation plan to fix raw HTML/metadata leakage, add modern ChatGPT React Router stream parsing, prevent HTML shells from falling back to raw user messages, and ensure strictly plain English text extraction.",
+  "updatedAt": "2026-11-03T09:57:29.937180143Z",
   "requestFeedback": true,
   "userFacing": true
 }

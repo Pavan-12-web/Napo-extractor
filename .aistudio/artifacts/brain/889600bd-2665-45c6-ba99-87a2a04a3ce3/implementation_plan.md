@@ -1,106 +1,102 @@
-# Plain English Conversation Extractor & Gemini API Removal Plan
+# Plain English Text Extraction & HTML Shell Guard
 
-Remove all extraneous metadata, schema wrappers, and technical diagnostics from extracted outputs and downloaded files, ensuring the user receives exclusively the plain English dialogue context with clean speaker labels (`User` and `Assistant`), and completely remove all Gemini API integrations.
-
----
+Ensure public AI conversation links (specifically modern ChatGPT share links using React Router streaming) extract all real dialogue turns as pure plain English text, eliminating all raw HTML source code, metadata, internal tool tokens, and application shells.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following user preferences were confirmed during clarification and govern the implementation:
+> The issue shown in your screenshot occurred because modern ChatGPT share pages transitioned to React Router stream payloads (`window.__reactRouterContext.streamController.enqueue`). The previous parser did not recognize this new format, causing the orchestrator to fall back to treating the raw HTML document as text and wrapping it in a `User:` label.
+>
+> We will fix this by implementing native React Router devalue stream parsing, stripping all internal AI tool tokens (`\uE200...\uE201`), and enforcing a strict guard that prevents any HTML document from ever falling back into conversation text.
 
-- **Confirmed Decision 1 (Plain English Formatting)**: The extracted content and downloaded file strictly contain only the plain English conversation dialogue formatted with clean speaker labels:
-  ```markdown
-  User:
-  [Plain English user inquiry]
-
-  Assistant:
-  [Plain English assistant response]
-  ```
-  Zero metadata: no conversation IDs, share URLs, timestamps, parser versions, schema JSON keys, citation metadata, or system notes.
-- **Confirmed Decision 2 (Primary Download Format)**: The primary one-click download action outputs a clean Markdown (`.md`) file containing purely the conversational text (with Plain Text `.txt` also available as an alternative).
-- **Confirmed Decision 3 (Complete Gemini API Removal)**:
-  - Delete `src/server/geminiUrlContext.ts`.
-  - Remove all `@google/genai` imports and calls from `src/server/fetchShare.ts`.
-  - Remove `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` from `metadata.json`.
-  - The extraction pipeline becomes 100% deterministic, local-first, and rule-based with zero external LLM API dependencies.
+- **Confirmed Decision 1**: Add native modern ChatGPT React Router / Remix stream payload extractor (`linear_conversation` devalue traversal).
+- **Confirmed Decision 2**: Strict HTML shell guard: If input is an HTML document (`<!DOCTYPE html>` or `<html>`) and does not resolve into valid conversation turns, immediately return the required empty shell recovery notice instead of dumping raw HTML into a message.
+- **Confirmed Decision 3**: Deep token sanitization: Automatically strip internal ChatGPT/Claude tool call markers (e.g. `\uE200genui\uE202...`, redacted plugin markers, and JSON payloads), yielding 100% human-readable plain English dialogue.
 
 ---
 
-## 1. Overview & Core Concept
+### 1. Overview & Core Concept
 
-- **What It Does**: Streamlines Napo Extractor so that when a link or conversation is provided, the output is stripped of all technical metadata, diagnostics, and wrappers. Both the on-screen reading view and the downloaded export contain purely the readable plain English dialogue context.
-- **Strict Plain English Context Guarantee**:
-  - NO JSON schema wrappers or `{ "messages": ... }` objects in standard view or default download.
-  - NO timestamps, token counts, message IDs, or share IDs.
-  - NO crawler metrics, parser versions, or connector telemetry.
-  - ONLY the actual words spoken by the user and assistant, with clean readable paragraph spacing and formatting.
-
----
-
-## 2. User Experience & Visual Design
-
-### Clean, Distraction-Free Flow
-
-1. **Input**: User pastes a link or conversation text into the clean input canvas.
-2. **Extraction**: Deterministic parser extracts conversation turns without external AI calls.
-3. **Pristine Plain English View**:
-   - Leads directly with the readable plain English dialogue.
-   - Clean speaker headers: `User` and `Assistant`.
-   - Prominent **"Download Plain Text / Markdown"** button.
-   - One-click **"Copy Plain Text"** button.
-4. **Downloaded File Content**:
-   The downloaded `.md` or `.txt` file contains exclusively:
-   ```markdown
-   User:
-   How does optimistic locking work in database systems?
-
-   Assistant:
-   Optimistic locking assumes that multiple transactions can complete without affecting each other. Each transaction reads data without taking locks, but checks whether another transaction modified the data before committing changes.
-   ```
-   No headers, no footers, no tracking tags, no metadata.
+- **What It Does**:
+  - Connects to modern ChatGPT public links (like `https://chatgpt.com/share/6ae9a821-7990-83ee-b2ea-ee3a1d8d5540`) and unpacks the 24+ conversation turns directly from the React Router state stream.
+  - Cleans every turn so it contains strictly natural English conversation.
+  - Guards against unrendered shells: if a user pastes raw HTML that cannot be parsed into real dialogue, the app rejects it with an explanatory recovery prompt rather than displaying or downloading source code.
+- **Target Persona**: Knowledge workers, researchers, and writers who need clean dialogue transcripts without code clutter or leaked metadata.
+- **Key Value**: 100% human-readable dialogue output with zero raw HTML, zero JSON, and zero internal plugin code.
 
 ---
 
-## 3. Key Product Decisions & Code Changes
+### 2. User Experience & Visual Design
 
-### Step 1: Remove Gemini API Integration
-- Remove `geminiUrlContext.ts` and all references from `server.ts` and `fetchShare.ts`.
-- Clean up `metadata.json`: change `"majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]` to `"majorCapabilities": []`.
-- Uninstall / remove unused `@google/genai` references.
+- **Extraction View**:
+  - Displays user and assistant turns with clean, legible typography and high contrast.
+  - Messages display pure conversational prose. Internal tool calls, plugin outputs, citations JSON, and raw source tags are completely excluded.
+- **Empty Shell Recovery**:
+  - When an unrendered HTML capture or empty shell is provided, the UI clearly shows:
+    > "No conversation content was found. This appears to be an application shell captured before the conversation was rendered. Copy the visible conversation text or use the local page extractor."
+- **Download Action**:
+  - Generates `.md` and `.txt` files containing strictly:
+    ```markdown
+    User:
+    [Plain English inquiry]
 
-### Step 2: Enforce Plain English Output & Export
-- Update `src/lib/exportLayer.ts` and `src/components/NormalizedConversationView.tsx` so the downloaded file:
-  - Does NOT include JSON schema strings.
-  - Does NOT include warning boxes or metadata footers.
-  - Outputs only `User:\n...\n\nAssistant:\n...`.
-- Streamline the UI so the primary display is the clean conversation text and the rule-based summary, without technical metadata cards.
+    Assistant:
+    [Plain English reply]
+    ```
 
 ---
 
-## 4. Technical Architecture
+### 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: React Router Stream Unpacking (`window.__reactRouterContext`)**
+  - *Chosen Approach*: Decode the Turbo/devalue serialization array in memory to locate `linear_conversation` and dereference message nodes.
+  - *Why*: Modern ChatGPT share URLs serve their data exclusively through this stream; this extracts all conversation messages without needing headless browsers or proxies.
+- **Decision 2: Elimination of HTML-as-Text Fallback**
+  - *Chosen Approach*: In `orchestrateParse` and `parseStreamText`, inspect input for `<!DOCTYPE`, `<html`, `<head`, or `<script`. If present and DOM/Flight/Router parsers find no messages, fail gracefully with the empty shell error rather than putting the HTML into `User:`.
+  - *Why*: Prevents the exact bug where the user sees raw HTML tags inside `User:`.
+- **Decision 3: Sanitization of Internal Tool Markup**
+  - *Chosen Approach*: Strip Unicode private-use tokens (`\uE200` to `\uE203`) and plugin JSON blobs emitted during web search or code interpreter calls.
+  - *Why*: Guarantees that only actual English conversation reaches the user and the exported file.
+
+---
+
+### 4. Technical Architecture & Data Strategy
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│               STREAMLINED PLAIN ENGLISH EXTRACTION PIPELINE            │
-├────────────────────────────────────────────────────────────────────────┤
-│  [ Input: URL / Paste ]                                                │
-│         │                                                              │
-│         ▼                                                              │
-│  [ 100% Deterministic Local / Direct Parsers (No Gemini API) ]         │
-│  - ChatGPT React Flight & __NEXT_DATA__ in-memory parser               │
-│  - Claude Snapshot & DOM in-memory parser                              │
-│  - Gemini / Perplexity / Grok / Meta AI clean DOM parsers              │
-│         │                                                              │
-│         ▼                                                              │
-│  [ Metadata Stripper & Plain Text Sanitizer ]                          │
-│  - Strip all IDs, timestamps, models, headers, footers, chrome         │
-│  - Retain strictly User & Assistant dialogue                           │
-│         │                                                              │
-│         ▼                                                              │
-│  [ User View & Download File ]                                         │
-│  - User: [Plain English text]                                          │
-│  - Assistant: [Plain English text]                                     │
-│  - Download: Pure clean .md / .txt file (zero metadata)                │
-└────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Input (URL or Paste)                     │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Parser Orchestration Pipeline               │
+│                                                             │
+│  1. Check Is Empty Shell? ──(Yes)──> Return Recovery Error  │
+│  2. Strategy A: Claude / ChatGPT JSON Snapshot              │
+│  3. Strategy B: HTML / Stream Parsers                       │
+│     ├── ChatGPT React Router devalue stream [NEW]           │
+│     ├── ChatGPT React Flight stream                         │
+│     ├── ChatGPT __NEXT_DATA__ payload                       │
+│     └── Standard DOM turn extraction                        │
+│  4. Strategy C: Stream Text (PLAIN TEXT ONLY)               │
+│     └── (Rejects any HTML documents with tags)              │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Plain English Normalizer                   │
+│  - Strip Unicode tool tokens (\uE200...\uE203)              │
+│  - Strip plugin redaction and JSON metadata blobs           │
+│  - Format: User: ... / Assistant: ...                       │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│         Verified Output & Download (.md, .txt)              │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+- **Verification Strategy**:
+  - Test with live ChatGPT link `https://chatgpt.com/share/6ae9a821-7990-83ee-b2ea-ee3a1d8d5540` to confirm 24 dialogue turns are extracted as pure plain English.
+  - Test with raw unrendered HTML to confirm the recovery notice is shown instead of HTML source code.
+  - Run `lint_applet` and `compile_applet`.

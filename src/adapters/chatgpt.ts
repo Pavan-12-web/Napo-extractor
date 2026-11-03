@@ -6,6 +6,7 @@
 import { ChatMessage } from '../types/extractor';
 import { nodeToCleanMarkdown, sanitizeCleanText } from './htmlUtils';
 import { ParseResult, PlatformAdapter } from './types';
+import { ChatGptConnector } from '../connectors/chatgpt';
 
 export const chatGptAdapter: PlatformAdapter = {
   id: 'chatgpt',
@@ -25,15 +26,32 @@ export const chatGptAdapter: PlatformAdapter = {
   },
 
   parseHtml(html: string): ParseResult {
+    let uncaptured = { images: 0, attachments: 0, canvases: 0 };
+    let truncationDetected = false;
+
+    // Check 0: Modern React Router stream controller payload
+    const streamRes = ChatGptConnector.parseReactRouterStream(html, 'https://chatgpt.com/share/pasted');
+    if (streamRes && streamRes.messages.length > 0) {
+      const messages: ChatMessage[] = streamRes.messages.map(m => ({
+        role: m.role === 'user' ? 'User' : 'Assistant',
+        text: m.content,
+      }));
+      return {
+        messages,
+        rawText: messages.map(m => `${m.role}:\n${m.text}`).join('\n\n'),
+        uncaptured,
+        truncationDetected,
+      };
+    }
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
     const messages: ChatMessage[] = [];
-    let uncaptured = { images: 0, attachments: 0, canvases: 0 };
-    let truncationDetected = false;
 
     // Check 1: Embedded JSON in script tags (e.g., __NEXT_DATA__ or remix state)
     const scriptElements = Array.from(doc.querySelectorAll('script'));
+
     for (const script of scriptElements) {
       const text = script.textContent || '';
       if (text.includes('"linear_conversation"') || text.includes('"mapping"') || text.includes('__NEXT_DATA__')) {
@@ -191,9 +209,12 @@ export const chatGptAdapter: PlatformAdapter = {
 
     // Check if plain text had no explicit headers
     if (messages.length === 0 && text.trim()) {
-      // Split into two blocks if possible or treat as user query
-      messages.push({ role: 'User', text: sanitizeCleanText(text) });
+      // Never treat an unparsed HTML document as a User message
+      if (!/<!DOCTYPE|<html|<body|<head/i.test(text)) {
+        messages.push({ role: 'User', text: sanitizeCleanText(text) });
+      }
     }
+
 
     if (text.includes('...') && text.endsWith('...')) {
       truncationDetected = true;

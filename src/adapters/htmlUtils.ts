@@ -145,29 +145,49 @@ function nodeToCleanMarkdownChildren(el: HTMLElement): string {
 }
 
 /**
- * Cleans extracted text to ensure no lingering system metadata or buttons remained.
+ * Cleans extracted text to ensure no lingering system metadata, tool calls, or buttons remain.
+ * Ensures the output is strictly plain English conversation dialogue.
  */
 export function sanitizeCleanText(text: string): string {
+  if (!text) return '';
   let cleaned = text;
 
-  // Remove trailing multiple newlines
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  // 1. Remove Private Use Area tool/plugin blocks (e.g. \uE200genui\uE202{"..."}\uE201)
+  cleaned = cleaned.replace(/\uE200[\s\S]*?\uE201/g, '');
+  cleaned = cleaned.replace(/[\uE000-\uF8FF][\s\S]*?[\uE000-\uF8FF]/g, '');
+  cleaned = cleaned.replace(/[\uE000-\uF8FF]/g, '');
 
-  // Strip common web chrome phrases if caught at line starts
+  // 2. Remove plugin redaction and system placeholder notices
+  cleaned = cleaned.replace(/The output of this plugin was redacted\.?/gi, '');
+  cleaned = cleaned.replace(/Original custom instructions no longer available\.?/gi, '');
+
+  // 3. Remove raw HTML markup if leaked into content
+  cleaned = cleaned.replace(/<!DOCTYPE[^>]*>/gi, '');
+  cleaned = cleaned.replace(/<\/?[a-z][a-z0-9_-]*(?:\s+[^>]*)?>/gi, '');
+
+  // 4. Strip common web chrome phrases if caught at line starts
   const chromePatterns = [
     /^Copy code$/gim,
     /^ChatGPT said:$/gim,
     /^You said:$/gim,
     /^Gemini said:$/gim,
+    /^Claude said:$/gim,
+    /^Perplexity said:$/gim,
     /^Show drafts$/gim,
     /^Modify response$/gim,
     /^Was this response helpful\?$/gim,
-    /^Report issue$/gim
+    /^Report issue$/gim,
+    /^Share conversation$/gim,
   ];
 
   for (const pattern of chromePatterns) {
     cleaned = cleaned.replace(pattern, '');
   }
 
-  return cleaned.trim();
+  // 5. Clean up line breaks and excessive whitespace
+  cleaned = cleaned.replace(/\r\n/g, '\n');
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleaned;
 }
+

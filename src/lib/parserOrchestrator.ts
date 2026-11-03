@@ -92,12 +92,26 @@ export function orchestrateParse(
     if (!conversation) {
       conversation = PerplexityConnector.parse(trimmed, sourceUrl || 'https://perplexity.ai/search/pasted');
     }
+
+    // Guard: If the input is an HTML document or application shell and structured HTML extraction
+    // failed to yield conversation turns, DO NOT fall back to stream text parsing (which would
+    // wrap the raw HTML source code into a User message).
+    if (!conversation && (trimmed.startsWith('<!DOCTYPE') || /<(html|head|body|script)[^>]*>/i.test(trimmed))) {
+      return {
+        success: false,
+        conversation: null,
+        errorMessage: EMPTY_SHELL_ERROR_MESSAGE,
+        isEmptyShell: true,
+        warnings: ['HTML document contained no extractable conversation messages.'],
+      };
+    }
   }
 
   // Strategy C: Plain Text / Markdown stream parsing
   if (!conversation) {
     conversation = parseStreamText(trimmed, sourceUrl);
   }
+
 
   // Validate the normalized conversation
   const validation = validateNormalizedConversation(conversation, trimmed);
@@ -176,18 +190,22 @@ function parseStreamText(text: string, sourceUrl: string): NormalizedConversatio
   flush();
 
   if (messages.length === 0 && text.trim()) {
-    messages.push({
-      id: 'msg-1',
-      role: 'user',
-      author: 'User',
-      content: sanitizeCleanText(text),
-      format: 'markdown',
-      createdAt: null,
-      citations: [],
-      attachments: [],
-      artifacts: [],
-    });
+    // If text looks like raw HTML markup, do not push it as a User turn
+    if (!/<!DOCTYPE|<html|<head|<body|<script/i.test(text)) {
+      messages.push({
+        id: 'msg-1',
+        role: 'user',
+        author: 'User',
+        content: sanitizeCleanText(text),
+        format: 'markdown',
+        createdAt: null,
+        citations: [],
+        attachments: [],
+        artifacts: [],
+      });
+    }
   }
+
 
   return {
     extractionStatus: messages.length > 0 ? 'complete' : 'error',

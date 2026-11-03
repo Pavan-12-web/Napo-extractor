@@ -179,24 +179,144 @@ export class ChatGptConnector {
   }
 
   /**
+   * Parses React Router / Remix streaming payloads (devalue/Turbo format) used in modern ChatGPT share pages.
+   */
+  static parseReactRouterStream(payloadText: string, sourceUrl: string): NormalizedConversation | null {
+    try {
+      const streamMatch = payloadText.match(/window\.__reactRouterContext\.streamController\.enqueue\(("[\s\S]*?")\);/);
+      if (!streamMatch) return null;
+
+      const rawData = JSON.parse(streamMatch[1]);
+      const parsed = JSON.parse(rawData);
+      if (!Array.isArray(parsed)) return null;
+
+      const linIdx = parsed.indexOf('linear_conversation');
+      if (linIdx === -1 || !Array.isArray(parsed[linIdx + 1])) return null;
+
+      const turnIndices: number[] = parsed[linIdx + 1];
+
+      function deref(idx: any, depth = 0, seen = new Set<number>()): any {
+        if (depth > 6) return null;
+        if (idx === null || idx === undefined) return null;
+        if (typeof idx !== 'number') return idx;
+        if (idx < 0 || idx >= parsed.length) return idx;
+        const item = parsed[idx];
+        if (typeof item !== 'object' || item === null) return item;
+        if (seen.has(idx)) return null;
+        seen.add(idx);
+
+        if (Array.isArray(item)) {
+          return item.map(childIdx => deref(childIdx, depth + 1, new Set(seen)));
+        }
+
+        const obj: Record<string, any> = {};
+        for (const key of Object.keys(item)) {
+          if (key === '_187' || key === '_189') continue; // Skip circular parent/child graphs
+          let realKey = key;
+          if (key.startsWith('_')) {
+            const keyIdx = parseInt(key.slice(1), 10);
+            if (typeof parsed[keyIdx] === 'string') {
+              realKey = parsed[keyIdx];
+            }
+          }
+          obj[realKey] = deref(item[key], depth + 1, new Set(seen));
+        }
+        return obj;
+      }
+
+      const messages: NormalizedMessage[] = [];
+
+      for (const nodeIdx of turnIndices) {
+        const node = deref(nodeIdx);
+        const msg = node?.message;
+        if (!msg) continue;
+
+        const role = msg.author?.role;
+        if (role !== 'user' && role !== 'assistant') continue;
+
+        const contentType = msg.content?.content_type;
+        if (
+          contentType === 'model_editable_context' ||
+          contentType === 'reasoning_recap' ||
+          contentType === 'thoughts'
+        ) {
+          continue;
+        }
+
+        const parts = msg.content?.parts;
+        const rawContent = Array.isArray(parts)
+          ? parts.filter((p: unknown) => typeof p === 'string').join('\n')
+          : '';
+
+        const content = sanitizeCleanText(rawContent);
+        if (!content) continue;
+
+        const createdAt = msg.create_time ? new Date(msg.create_time * 1000).toISOString() : null;
+
+        messages.push({
+          id: msg.id || `chatgpt-${messages.length + 1}`,
+          role: role === 'user' ? 'user' : 'assistant',
+          author: role === 'user' ? 'User' : 'ChatGPT',
+          content,
+          format: 'markdown',
+          createdAt,
+          citations: [],
+          attachments: [],
+          artifacts: [],
+        });
+      }
+
+      if (messages.length === 0) return null;
+
+      const titleMatch = payloadText.match(/<title>([\s\S]*?)<\/title>/i);
+      const title = titleMatch
+        ? titleMatch[1].replace(/ - ChatGPT$| \| ChatGPT$/i, '').trim()
+        : 'ChatGPT Conversation';
+
+      const shareId = sourceUrl.split('/').pop()?.split('?')[0] || '';
+
+      return {
+        extractionStatus: 'complete',
+        platform: 'chatgpt',
+        sourceUrl,
+        shareId,
+        title: title || 'ChatGPT Conversation',
+        model: null,
+        updatedAt: null,
+        messages,
+        warnings: [],
+        parserVersion: this.PARSER_VERSION,
+        connectorUsed: 'structured_api',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * DOM fallback parser for rendered HTML.
    */
   static parseRenderedHtml(html: string, sourceUrl: string): NormalizedConversation | null {
-    // Try React Flight first
+    // 1. Try modern React Router streaming payload first
+    const stream = this.parseReactRouterStream(html, sourceUrl);
+    if (stream && stream.messages.length > 0) return stream;
+
+    // 2. Try React Flight
     const flight = this.parseReactFlightPayload(html, sourceUrl);
     if (flight && flight.messages.length > 0) return flight;
 
-    // Try __NEXT_DATA__
+    // 3. Try legacy __NEXT_DATA__
     const nextData = this.parseNextDataPayload(html, sourceUrl);
     if (nextData && nextData.messages.length > 0) return nextData;
 
-    // DOM-based extraction
+    // 4. DOM-based extraction
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
     const turnNodes = Array.from(
       doc.querySelectorAll('[data-message-author-role], article, [data-testid^="conversation-turn-"]')
     );
+
 
     if (turnNodes.length === 0) return null;
 

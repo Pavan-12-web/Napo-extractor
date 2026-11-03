@@ -84,6 +84,15 @@ export default function App() {
     const rawContent = (explicitText !== undefined ? explicitText : pasteInput).trim();
     if (!rawContent) return;
 
+    // Smart URL auto-detection: if the user pasted a single URL into the paste box,
+    // automatically route to URL mode extraction
+    if (/^https?:\/\/[^\s]+$/i.test(rawContent)) {
+      setUrlInput(rawContent);
+      setInputMode('link');
+      handleExtractFromUrl(rawContent);
+      return;
+    }
+
     handleReset();
     setIsProcessing(true);
     setStatusMessage('Parsing conversation locally...');
@@ -105,8 +114,8 @@ export default function App() {
   /**
    * URL Mode: 5-Tier Connector Hierarchy
    */
-  const handleExtractFromUrl = async () => {
-    const trimmedUrl = urlInput.trim();
+  const handleExtractFromUrl = async (overrideUrl?: string) => {
+    const trimmedUrl = (overrideUrl !== undefined ? overrideUrl : urlInput).trim();
     if (!trimmedUrl) return;
 
     handleReset();
@@ -117,7 +126,7 @@ export default function App() {
     const providerName = detected ? detected.name : 'Unknown provider';
 
     try {
-      // Connect to server proxy (Tier 1: Snapshot API, Tier 2: Public page fetch, Tier 3: Gemini URL context)
+      // Connect to server proxy (Tier 1: Snapshot API, Tier 2: Public page fetch)
       const response = await fetch('/api/fetch-share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,6 +169,12 @@ export default function App() {
           setResult(parsed.conversation);
           return;
         } else {
+          if (parsed.isEmptyShell) {
+            setRecoveryTargetUrl(trimmedUrl);
+            setRecoveryProviderName(providerName);
+            setShowRecoveryDialog(true);
+            return;
+          }
           setErrorMessage(parsed.errorMessage || 'No conversation content found in retrieved page.');
         }
       }
@@ -169,6 +184,7 @@ export default function App() {
       setErrorMessage(`Network request failed: ${msg}`);
     }
   };
+
 
   // Compute privacy audit and summary for current result
   const summary = result ? generateContentSummary(result.messages.map(m => ({ role: m.role === 'user' ? 'User' : 'Assistant', text: m.content }))) : null;
@@ -347,7 +363,7 @@ export default function App() {
                     />
 
                     <button
-                      onClick={handleExtractFromUrl}
+                      onClick={() => handleExtractFromUrl()}
                       disabled={isProcessing || !urlInput.trim()}
                       className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-[#1a2538] disabled:text-slate-500 text-white font-semibold text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
                     >
