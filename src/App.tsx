@@ -142,7 +142,7 @@ export default function App() {
         return;
       }
 
-      // If server returned structured JSON (e.g. Claude chat snapshot or Gemini URL Context)
+      // If server returned structured JSON (e.g. Claude chat snapshot)
       if (data.jsonData) {
         const parsed = orchestrateParse(JSON.stringify(data.jsonData), trimmedUrl);
         setIsProcessing(false);
@@ -150,12 +150,6 @@ export default function App() {
           setResult(parsed.conversation);
           return;
         }
-      }
-
-      if (data.geminiExtractedData) {
-        setIsProcessing(false);
-        setResult(data.geminiExtractedData);
-        return;
       }
 
       // If server returned raw HTML
@@ -336,7 +330,7 @@ export default function App() {
                   <div>
                     <h3 className="text-base font-bold text-white mb-1">Public Share URL Extraction</h3>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Attempts public structured retrieval or Gemini URL Context. If the provider blocks direct fetching, the recovery dialog guides you to local extraction.
+                      Attempts public structured retrieval or direct page fetch. If the provider blocks direct fetching, the recovery dialog guides you to local extraction.
                     </p>
                   </div>
 

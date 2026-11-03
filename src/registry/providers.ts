@@ -19,9 +19,8 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderCapability> = {
     ],
     exampleUrl: 'https://chatgpt.com/s/cx_6ae88f2e4ab08191a6ef4ecf15378398',
     capabilities: {
-      directFetch: false, // Cloudflare bot challenge blocks direct server fetch
-      structuredData: true, // React Flight & __NEXT_DATA__
-      geminiUrlContext: true,
+      directFetch: false,
+      structuredData: true,
       browserExtension: true,
     },
     supportedContentTypes: ['markdown', 'code_blocks', 'tables', 'citations', 'attachments'],
@@ -43,9 +42,8 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderCapability> = {
     ],
     exampleUrl: 'https://claude.ai/share/767b0a62-e721-49bd-85b0-2e0676166874',
     capabilities: {
-      directFetch: true, // Public chat_snapshots endpoint
-      structuredData: true, // Claude chat snapshot JSON
-      geminiUrlContext: true,
+      directFetch: true,
+      structuredData: true,
       browserExtension: true,
     },
     supportedContentTypes: ['markdown', 'artifacts', 'code_blocks', 'tables', 'extracted_documents'],
@@ -68,9 +66,8 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderCapability> = {
     ],
     exampleUrl: 'https://share.gemini.google/D96t5BUjuFVg',
     capabilities: {
-      directFetch: false, // Client JavaScript hydration required
+      directFetch: false,
       structuredData: true,
-      geminiUrlContext: true,
       browserExtension: true,
     },
     supportedContentTypes: ['markdown', 'code_blocks', 'tables', 'lists'],
@@ -93,7 +90,6 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderCapability> = {
     capabilities: {
       directFetch: false,
       structuredData: false,
-      geminiUrlContext: true,
       browserExtension: true,
     },
     supportedContentTypes: ['markdown', 'code_blocks', 'tables'],
@@ -115,7 +111,6 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderCapability> = {
     capabilities: {
       directFetch: false,
       structuredData: false,
-      geminiUrlContext: false,
       browserExtension: true,
     },
     supportedContentTypes: ['markdown', 'code_blocks'],
@@ -137,7 +132,6 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderCapability> = {
     capabilities: {
       directFetch: false,
       structuredData: true,
-      geminiUrlContext: true,
       browserExtension: true,
     },
     supportedContentTypes: ['markdown', 'citations', 'sources'],

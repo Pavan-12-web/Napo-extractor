@@ -8,7 +8,6 @@ export type ProviderId = 'chatgpt' | 'claude' | 'gemini' | 'grok' | 'meta' | 'pe
 export type ConnectorType =
   | 'structured_api'
   | 'embedded_payload'
-  | 'gemini_url_context'
   | 'browser_extension'
   | 'manual_paste';
 
@@ -88,7 +87,6 @@ export interface ProviderCapability {
   capabilities: {
     directFetch: boolean;
     structuredData: boolean;
-    geminiUrlContext: boolean;
     browserExtension: boolean;
   };
   supportedContentTypes: string[];

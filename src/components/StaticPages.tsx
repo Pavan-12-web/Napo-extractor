@@ -230,7 +230,7 @@ export const StaticPages: React.FC<StaticPagesProps> = ({
           Browser Bookmarklet
         </h1>
         <p className="text-sm text-slate-400 mb-8 leading-relaxed">
-          The Napo Bookmarklet runs directly on the active share tab in your browser. Because it runs locally inside your authenticated browser session, it effortlessly bypasses Cloudflare bot protection and dynamic JavaScript rendering hurdles.
+          The Napo Bookmarklet runs directly on the active share tab in your browser. It performs local extraction from the page you opened after it is already rendered in your browser, without sending cookies or full webpage HTML to any server.
         </p>
 
         {/* Drag target box */}

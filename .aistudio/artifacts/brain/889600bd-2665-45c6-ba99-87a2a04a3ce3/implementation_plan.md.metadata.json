@@ -1,6 +1,6 @@
 {
-  "summary": "Production-ready multi-provider extraction architecture plan featuring a 5-tier connector hierarchy (structured-data, embedded React Flight, server-side Gemini 3.8 Flash URL Context, MV3 browser extension, manual paste), provider capability registry, normalized schema, recovery state machine, security/privacy controls, and 16 acceptance test fixtures.",
-  "updatedAt": "2026-11-02T14:31:58.738841878Z",
+  "summary": "Plan to remove all metadata from extracted outputs and downloads, ensuring both on-screen text and exported files contain only the plain English conversation context with clean speaker labels, and completely removing the Gemini API integration.",
+  "updatedAt": "2026-11-03T08:13:03.178600691Z",
   "requestFeedback": true,
   "userFacing": true
 }

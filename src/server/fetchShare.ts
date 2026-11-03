@@ -7,7 +7,6 @@ import http from 'http';
 import https from 'https';
 import { URL } from 'url';
 import dns from 'dns/promises';
-import { extractWithGeminiUrlContext } from './geminiUrlContext';
 
 const ALLOWED_HOSTNAMES = new Set([
   'chatgpt.com',
@@ -54,7 +53,6 @@ export interface FetchResult {
   html?: string;
   jsonData?: any;
   error?: string;
-  geminiExtractedData?: any;
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -264,17 +262,6 @@ export async function fetchShareLink(rawUrl: string): Promise<FetchResult> {
         pageRes.body.includes('data-test-id="user-query"');
 
       if (!hasMessagesInHtml) {
-        // Try Tier 3: Gemini 3.8 Flash URL Context opportunistic extraction
-        const geminiContext = await extractWithGeminiUrlContext(currentUrlString, pageRes.body);
-        if (geminiContext && geminiContext.messages.length > 0) {
-          return {
-            success: true,
-            status: 'ok',
-            finalUrl: pageRes.finalUrl,
-            geminiExtractedData: geminiContext,
-          };
-        }
-
         return {
           success: false,
           status: 'js_required',
