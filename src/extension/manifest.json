@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Napo Extractor — Companion Extension",
+  "version": "1.0.0",
+  "description": "Secure companion extension for extracting rendered AI conversations locally from your active browser session.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://share.gemini.google/*",
+    "https://grok.com/*",
+    "https://x.ai/*",
+    "https://meta.ai/*",
+    "https://www.perplexity.ai/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://share.gemini.google/*",
+        "https://grok.com/*",
+        "https://x.ai/*",
+        "https://meta.ai/*",
+        "https://www.perplexity.ai/*"
+      ],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

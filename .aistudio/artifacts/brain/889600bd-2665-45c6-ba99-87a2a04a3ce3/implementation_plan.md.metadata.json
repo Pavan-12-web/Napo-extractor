@@ -1,0 +1,6 @@
+{
+  "summary": "Production-ready multi-provider extraction architecture plan featuring a 5-tier connector hierarchy (structured-data, embedded React Flight, server-side Gemini 3.8 Flash URL Context, MV3 browser extension, manual paste), provider capability registry, normalized schema, recovery state machine, security/privacy controls, and 16 acceptance test fixtures.",
+  "updatedAt": "2026-11-02T14:31:58.738841878Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

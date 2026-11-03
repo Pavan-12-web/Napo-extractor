@@ -1,0 +1,6 @@
+{
+  "name": "Napo extractor",
+  "description": "A private, personal-use web app that turns public AI-chat share links into clean, exportable text with metadata-free extraction integrity verification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
