@@ -7,69 +7,81 @@ import { NormalizedConversation, NormalizedMessage, ProviderId } from '../types/
 import { sanitizeCleanText, nodeToCleanMarkdown } from '../adapters/htmlUtils';
 
 export class GeminiConnector {
-  static readonly PARSER_VERSION = '2.1.0';
+  static readonly PARSER_VERSION = '2.2.0';
 
   static parse(html: string, sourceUrl: string): NormalizedConversation | null {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    if (typeof DOMParser === 'undefined') return null;
 
-    const turnNodes = Array.from(
-      doc.querySelectorAll(
-        '.user-query, [data-test-id="user-query"], user-query-container, .model-response, [data-test-id="model-response"], .response-container, message-content'
-      )
-    );
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
 
-    if (turnNodes.length === 0) return null;
+      const turnNodes = Array.from(
+        doc.querySelectorAll(
+          '.user-query, [data-test-id="user-query"], user-query-container, .model-response, [data-test-id="model-response"], .response-container, message-content, [data-message-author-role], .conversation-container > div, .chat-turn'
+        )
+      );
 
-    const messages: NormalizedMessage[] = [];
-    const warnings: string[] = [];
-    let hasImages = false;
+      if (turnNodes.length === 0) return null;
 
-    turnNodes.forEach((node, idx) => {
-      const isUser =
-        node.className.includes('user-query') ||
-        node.getAttribute('data-test-id')?.includes('user-query') ||
-        node.tagName.toLowerCase() === 'user-query-container';
+      const messages: NormalizedMessage[] = [];
+      const warnings: string[] = [];
+      let hasImages = false;
 
-      if (node.querySelector('img:not([alt*="avatar"])')) {
-        hasImages = true;
+      turnNodes.forEach((node, idx) => {
+        const classStr = (node.className || '').toString().toLowerCase();
+        const testId = (node.getAttribute('data-test-id') || '').toLowerCase();
+        const tag = node.tagName.toLowerCase();
+        const authorRole = (node.getAttribute('data-message-author-role') || '').toLowerCase();
+
+        const isUser =
+          authorRole === 'user' ||
+          classStr.includes('user') ||
+          testId.includes('user') ||
+          tag.includes('user');
+
+        if (node.querySelector('img:not([alt*="avatar"])')) {
+          hasImages = true;
+        }
+
+        const content = sanitizeCleanText(nodeToCleanMarkdown(node));
+        if (!content) return;
+
+        messages.push({
+          id: `gemini-msg-${idx + 1}`,
+          role: isUser ? 'user' : 'assistant',
+          author: isUser ? 'User' : 'Gemini',
+          content,
+          format: 'markdown',
+          createdAt: null,
+          citations: [],
+          attachments: [],
+          artifacts: [],
+        });
+      });
+
+      if (messages.length === 0) return null;
+
+      if (hasImages) {
+        warnings.push('Images referenced in the prompt are preserved in text context, but image asset binaries are excluded.');
       }
 
-      const content = sanitizeCleanText(nodeToCleanMarkdown(node));
-      if (!content) return;
-
-      messages.push({
-        id: `gemini-msg-${idx + 1}`,
-        role: isUser ? 'user' : 'assistant',
-        author: isUser ? 'User' : 'Gemini',
-        content,
-        format: 'markdown',
-        createdAt: null,
-        citations: [],
-        attachments: [],
-        artifacts: [],
-      });
-    });
-
-    if (messages.length === 0) return null;
-
-    if (hasImages) {
-      warnings.push('Images referenced in the prompt are preserved in text context, but image asset binaries are excluded.');
+      return {
+        extractionStatus: 'complete',
+        platform: 'gemini',
+        sourceUrl,
+        shareId: sourceUrl.split('/').pop()?.split('?')[0] || '',
+        title: doc.title?.replace(' - Gemini', '').trim() || 'Gemini Conversation',
+        model: null,
+        updatedAt: null,
+        messages,
+        warnings,
+        parserVersion: this.PARSER_VERSION,
+        connectorUsed: 'embedded_payload',
+      };
+    } catch {
+      return null;
     }
-
-    return {
-      extractionStatus: 'complete',
-      platform: 'gemini',
-      sourceUrl,
-      shareId: sourceUrl.split('/').pop()?.split('?')[0] || '',
-      title: doc.title?.replace(' - Gemini', '').trim() || 'Gemini Conversation',
-      model: null,
-      updatedAt: null,
-      messages,
-      warnings,
-      parserVersion: this.PARSER_VERSION,
-      connectorUsed: 'embedded_payload',
-    };
   }
 }
 

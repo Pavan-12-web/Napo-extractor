@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NormalizedConversation, ProviderId } from '../types/schema';
+import { NormalizedConversation, NormalizedMessage, ProviderId } from '../types/schema';
 import { ChatGptConnector } from '../connectors/chatgpt';
 import { ClaudeConnector } from '../connectors/claude';
 import { GeminiConnector, PerplexityConnector, GrokConnector, MetaAiConnector } from '../connectors/others';
 import { validateNormalizedConversation, checkIsEmptyApplicationShell, EMPTY_SHELL_ERROR_MESSAGE } from './validation';
 import { auditAndSanitizePrivacy } from './privacyAudit';
 import { generateContentSummary } from './summary';
-import { sanitizeCleanText } from '../adapters/htmlUtils';
+import { sanitizeCleanText, nodeToCleanMarkdown } from '../adapters/htmlUtils';
 
 export interface ParseOrchestrationResult {
   success: boolean;
@@ -91,6 +91,11 @@ export function orchestrateParse(
     // 4. Try Perplexity DOM
     if (!conversation) {
       conversation = PerplexityConnector.parse(trimmed, sourceUrl || 'https://perplexity.ai/search/pasted');
+    }
+
+    // 5. Try generic HTML dialogue & meta tag extraction
+    if (!conversation) {
+      conversation = extractGenericHtmlConversation(trimmed, sourceUrl || 'pasted-html');
     }
 
     // Guard: If the input is an HTML document or application shell and structured HTML extraction
@@ -233,4 +238,66 @@ function parseStreamText(text: string, sourceUrl: string): NormalizedConversatio
     parserVersion: '2.0.0-stream',
     connectorUsed: 'manual_paste',
   };
+}
+
+/**
+ * Fallback parser for generic HTML containing conversation turns or metadata descriptions.
+ */
+function extractGenericHtmlConversation(html: string, sourceUrl: string): NormalizedConversation | null {
+  try {
+    if (typeof DOMParser === 'undefined') return null;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Remove scripts, styles, and chrome elements
+    doc.querySelectorAll('script, style, noscript, svg, nav, header, footer, iframe').forEach(el => el.remove());
+
+    const candidates = Array.from(
+      doc.querySelectorAll(
+        '[class*="message"], [class*="turn"], [class*="prompt"], [class*="response"], [class*="bubble"], [class*="chat-item"], [data-role], article'
+      )
+    );
+
+    const messages: NormalizedMessage[] = [];
+
+    if (candidates.length >= 2) {
+      candidates.forEach((el, idx) => {
+        const text = sanitizeCleanText(nodeToCleanMarkdown(el));
+        if (text && text.length > 5) {
+          const isUser = /user|human|prompt|query/i.test(el.className + ' ' + (el.getAttribute('data-role') || ''));
+          messages.push({
+            id: `msg-gen-${idx + 1}`,
+            role: isUser ? 'user' : 'assistant',
+            author: isUser ? 'User' : 'Assistant',
+            content: text,
+            format: 'markdown',
+            createdAt: null,
+            citations: [],
+            attachments: [],
+            artifacts: [],
+          });
+        }
+      });
+    }
+
+    // Never treat meta tags (og:description, etc.) as conversation turns.
+    // Genuine conversations must have real message elements or structured data.
+    if (messages.length === 0) return null;
+
+    return {
+      extractionStatus: 'complete',
+      platform: 'ai_chat',
+      sourceUrl,
+      shareId: '',
+      title: doc.title?.trim() || 'Extracted Conversation',
+      model: null,
+      updatedAt: null,
+      messages,
+      warnings: [],
+      parserVersion: '2.1.0-generic',
+      connectorUsed: 'embedded_payload',
+    };
+  } catch {
+    return null;
+  }
 }

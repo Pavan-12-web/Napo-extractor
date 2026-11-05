@@ -6,7 +6,7 @@
 import { NormalizedConversation } from '../types/schema';
 
 export const EMPTY_SHELL_ERROR_MESSAGE =
-  'No conversation content was found. This appears to be an application shell captured before the conversation was rendered. Copy the visible conversation text or use the local page extractor.';
+  'No conversation text was found in this page. Please copy the conversation text and click "Paste from Clipboard" to extract it.';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -17,7 +17,7 @@ export interface ValidationResult {
 }
 
 /**
- * Checks if input HTML is purely an unrendered single-page app shell.
+ * Checks if input HTML is purely an unrendered single-page app shell with zero content.
  */
 export function checkIsEmptyApplicationShell(inputHtml: string): boolean {
   const trimmed = inputHtml.trim();
@@ -25,8 +25,7 @@ export function checkIsEmptyApplicationShell(inputHtml: string): boolean {
 
   const lower = trimmed.toLowerCase();
 
-  // Common application shell markers
-  const hasScriptTags = lower.includes('<script');
+  // True empty shells have empty root containers and no content
   const hasEmptyRoot =
     lower.includes('<div id="root"></div>') ||
     lower.includes('<div id="app"></div>') ||
@@ -42,9 +41,12 @@ export function checkIsEmptyApplicationShell(inputHtml: string): boolean {
     !lower.includes('data-message-author-role') &&
     !lower.includes('chatgpt said') &&
     !lower.includes('linear_conversation') &&
-    !lower.includes('chat_messages');
+    !lower.includes('chat_messages') &&
+    !lower.includes('mapping') &&
+    !lower.includes('__next_data__');
 
-  if ((hasEmptyRoot || (hasScriptTags && lower.length < 20000)) && hasNoDialogueMarkers) {
+  // Only consider it an empty shell if it has an empty mount container with no text content
+  if (hasEmptyRoot && hasNoDialogueMarkers && lower.length < 5000) {
     return true;
   }
 
@@ -106,6 +108,26 @@ export function validateNormalizedConversation(
         break;
       }
     }
+  }
+
+  // 3b. Guard against teaser metadata or single-line preview summaries
+  const totalWords = conv.messages.reduce((acc, m) => acc + (m.content ? m.content.trim().split(/\s+/).length : 0), 0);
+  const combinedContent = conv.messages.map(m => m.content.toLowerCase()).join(' ');
+
+  const isMetadataTeaser =
+    combinedContent.includes("here's a chat someone thought you'd want to see") ||
+    combinedContent.includes("check out this chat") ||
+    (totalWords < 20 && (rawSourceText.includes('<!DOCTYPE') || rawSourceText.includes('<html')));
+
+  if (isMetadataTeaser) {
+    return {
+      isValid: false,
+      isEmptyShell: true,
+      status: 'error',
+      errorMessage:
+        'Only page preview metadata was detected rather than the conversation dialogue. Please copy the conversation text and click "Paste from Clipboard & Extract".',
+      warnings: ['Rejected 1-line metadata teaser.'],
+    };
   }
 
   // 4. Determine final status: partial if attachments or citations missing

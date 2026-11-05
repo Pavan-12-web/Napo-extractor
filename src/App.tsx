@@ -16,17 +16,15 @@ import { ExtensionGuide } from './components/ExtensionGuide';
 import { ProviderRegistryView } from './components/ProviderRegistryView';
 import { TestLab } from './components/TestLab';
 import { StaticPages } from './components/StaticPages';
+import { ClipboardAssistant } from './components/ClipboardAssistant';
 
 import {
   ArrowRight,
   AlertCircle,
-  Sparkles,
   Link as LinkIcon,
   FileText,
-  CornerDownLeft,
   X,
-  ExternalLink,
-  Bookmark,
+  Clipboard,
 } from 'lucide-react';
 
 export default function App() {
@@ -35,9 +33,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Recovery for client-side empty shells or bot challenges
-  const [blockedUrlNotice, setBlockedUrlNotice] = useState<{ url: string; provider: string } | null>(null);
+  const [assistantInfo, setAssistantInfo] = useState<{ url: string; provider: string } | null>(null);
 
   // Result state
   const [result, setResult] = useState<NormalizedConversation | null>(null);
@@ -60,8 +56,8 @@ export default function App() {
   const handleReset = () => {
     setErrorMessage(null);
     setStatusMessage(null);
-    setBlockedUrlNotice(null);
     setResult(null);
+    setAssistantInfo(null);
   };
 
   const handleExtractAnother = () => {
@@ -69,7 +65,7 @@ export default function App() {
     setInput('');
     setErrorMessage(null);
     setStatusMessage(null);
-    setBlockedUrlNotice(null);
+    setAssistantInfo(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => {
       textareaRef.current?.focus();
@@ -107,27 +103,57 @@ export default function App() {
           body: JSON.stringify({ url: raw }),
         });
 
+        if (!response.ok) {
+          const errorJson = await response.json().catch(() => null);
+          setIsProcessing(false);
+          setStatusMessage(null);
+          if (response.status === 403 || errorJson?.status === 'bot_blocked') {
+            setAssistantInfo({
+              url: raw,
+              provider: errorJson?.blockedPlatform || providerName,
+            });
+            return;
+          }
+          setErrorMessage(
+            errorJson?.error ||
+              `Could not connect to conversation link (Server status: ${response.status}). You can copy the conversation text and click "Paste from Clipboard" to extract it.`
+          );
+          return;
+        }
+
         const data = await response.json();
 
         if (!data.success) {
           setIsProcessing(false);
           setStatusMessage(null);
-
           if (data.status === 'bot_blocked' || data.status === 'js_required') {
-            setBlockedUrlNotice({ url: raw, provider: providerName });
+            setAssistantInfo({
+              url: data.targetUrl || raw,
+              provider: data.blockedPlatform || providerName,
+            });
             return;
           }
-
-          setErrorMessage(data.error || 'Failed to retrieve public share page.');
+          setErrorMessage(
+            data.error ||
+              'Could not fetch conversation directly from this link. You can copy the conversation text and click "Paste from Clipboard" to extract it.'
+          );
           return;
         }
 
-        // 1. Structured JSON (e.g. Claude chat snapshot)
+        // 1. Structured JSON (e.g. Gemini normalized conversation or Claude snapshot)
         if (data.jsonData) {
+          if (data.jsonData.extractionStatus && Array.isArray(data.jsonData.messages) && data.jsonData.messages.length > 0) {
+            setResult(data.jsonData);
+            setIsProcessing(false);
+            setStatusMessage(null);
+            scrollToResult();
+            return;
+          }
+
           const parsed = orchestrateParse(JSON.stringify(data.jsonData), raw);
           setIsProcessing(false);
           setStatusMessage(null);
-          if (parsed.success && parsed.conversation) {
+          if (parsed.success && parsed.conversation && parsed.conversation.messages.length > 0) {
             setResult(parsed.conversation);
             scrollToResult();
             return;
@@ -139,23 +165,27 @@ export default function App() {
           const parsed = orchestrateParse(data.html, raw);
           setIsProcessing(false);
           setStatusMessage(null);
-          if (parsed.success && parsed.conversation) {
+          if (parsed.success && parsed.conversation && parsed.conversation.messages.length > 0) {
             setResult(parsed.conversation);
             scrollToResult();
             return;
           } else {
-            if (parsed.isEmptyShell) {
-              setBlockedUrlNotice({ url: raw, provider: providerName });
-              return;
-            }
-            setErrorMessage(parsed.errorMessage || 'No conversation content found.');
+            // Empty SPA shell or client rendering blocked extraction; activate clipboard assistant
+            setAssistantInfo({
+              url: raw,
+              provider: providerName,
+            });
+            return;
           }
         }
       } catch (err: unknown) {
         setIsProcessing(false);
         setStatusMessage(null);
-        const msg = err instanceof Error ? err.message : 'Network request failed';
-        setErrorMessage(msg);
+        // On network error or timeout, provide immediate clipboard bypass
+        setAssistantInfo({
+          url: raw,
+          provider: providerName,
+        });
       }
     } else {
       // Local Text / Markdown / HTML paste extraction
@@ -173,6 +203,20 @@ export default function App() {
         setResult(parsed.conversation);
         scrollToResult();
       }, 60);
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        setInput(text);
+        handleExtract(text);
+      } else {
+        setErrorMessage('Clipboard is empty. Copy the conversation text and try again.');
+      }
+    } catch {
+      setErrorMessage('Browser clipboard access blocked. Please press Ctrl+V / ⌘+V to paste into the box.');
     }
   };
 
@@ -252,7 +296,6 @@ export default function App() {
                   onChange={e => {
                     setInput(e.target.value);
                     if (errorMessage) setErrorMessage(null);
-                    if (blockedUrlNotice) setBlockedUrlNotice(null);
                   }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || isUrl)) {
@@ -264,18 +307,33 @@ export default function App() {
                   className="w-full bg-[#06080f] border border-[#162033] focus:border-blue-500 rounded-xl p-3.5 text-xs sm:text-sm text-white placeholder-slate-500 font-mono outline-none leading-relaxed resize-y transition-all"
                 />
 
-                {input && (
-                  <button
-                    onClick={() => {
-                      setInput('');
-                      textareaRef.current?.focus();
-                    }}
-                    className="absolute top-2.5 right-2.5 p-1 rounded-md text-slate-500 hover:text-white bg-[#0e1422] transition-colors cursor-pointer"
-                    title="Clear input"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                  {!input && (
+                    <button
+                      type="button"
+                      onClick={handlePasteFromClipboard}
+                      className="px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-400 hover:text-white bg-[#0e1422] hover:bg-[#162033] border border-[#1e2a40] transition-colors cursor-pointer flex items-center gap-1.5"
+                      title="Paste from clipboard"
+                    >
+                      <Clipboard className="w-3 h-3 text-blue-400" />
+                      <span>Paste</span>
+                    </button>
+                  )}
+
+                  {input && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInput('');
+                        textareaRef.current?.focus();
+                      }}
+                      className="p-1 rounded-md text-slate-500 hover:text-white bg-[#0e1422] transition-colors cursor-pointer"
+                      title="Clear input"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Bottom bar inside smart box */}
@@ -301,6 +359,22 @@ export default function App() {
 
                 {/* Primary Action Button */}
                 <div className="flex items-center gap-2 self-end sm:self-auto">
+                  {isUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssistantInfo({
+                          url: trimmedInput,
+                          provider: detectedProvider ? detectedProvider.name : 'AI Platform',
+                        });
+                      }}
+                      className="px-3 py-2 bg-[#101726] hover:bg-[#182338] border border-[#1e2c45] text-slate-300 hover:text-white font-medium text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                      title="Open Clipboard Assistant workflow"
+                    >
+                      <Clipboard className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Assisted Mode</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => handleExtract()}
                     disabled={isProcessing || !trimmedInput}
@@ -316,6 +390,7 @@ export default function App() {
               <div className="mt-4 pt-3.5 border-t border-[#141d2e] flex flex-wrap items-center gap-2 text-xs text-slate-400">
                 <span className="text-slate-500">Try a sample:</span>
                 <button
+                  type="button"
                   onClick={loadSampleChatGpt}
                   className="text-slate-300 hover:text-blue-400 underline decoration-slate-600 underline-offset-2 transition-colors cursor-pointer"
                 >
@@ -323,6 +398,7 @@ export default function App() {
                 </button>
                 <span className="text-slate-600">·</span>
                 <button
+                  type="button"
                   onClick={loadSampleClaude}
                   className="text-slate-300 hover:text-blue-400 underline decoration-slate-600 underline-offset-2 transition-colors cursor-pointer"
                 >
@@ -330,6 +406,22 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Clipboard Assistant for bypassing Cloudflare/Bot protection */}
+            {assistantInfo && (
+              <ClipboardAssistant
+                targetUrl={assistantInfo.url}
+                providerName={assistantInfo.provider}
+                onExtractFromText={(text) => {
+                  setAssistantInfo(null);
+                  setInput(text);
+                  handleExtract(text);
+                }}
+                onCancel={() => {
+                  setAssistantInfo(null);
+                }}
+              />
+            )}
 
             {/* Status Indicator */}
             {statusMessage && (
@@ -339,46 +431,25 @@ export default function App() {
               </div>
             )}
 
-            {/* Error Message */}
+            {/* Error Message with 1-click clipboard paste fallback */}
             {errorMessage && (
-              <div className="p-4 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-300 flex items-start gap-3 animate-fade-in">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <span className="font-semibold block text-red-200">Unable to extract conversation</span>
-                  <p className="mt-0.5 text-slate-300 leading-relaxed">{errorMessage}</p>
+              <div className="p-4 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="font-semibold block text-red-200">Unable to extract conversation</span>
+                    <p className="mt-0.5 text-slate-300 leading-relaxed">{errorMessage}</p>
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Friendly Browser Rendering Notice (when link requires JS or user session) */}
-            {blockedUrlNotice && (
-              <div className="p-5 rounded-2xl bg-[#0f1524] border border-[#24334f] text-slate-200 space-y-3 animate-fade-in">
-                <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{blockedUrlNotice.provider} requires browser rendering</span>
-                </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  This public page is rendered dynamically by your web browser. You can extract it in seconds:
-                </p>
-                <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                  <a
-                    href={blockedUrlNotice.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  >
-                    <span>Open link in new tab</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-
-                  <button
-                    onClick={() => setCurrentView('extension')}
-                    className="px-4 py-2 bg-[#172238] hover:bg-[#1e2d4a] border border-[#273859] text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Bookmark className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Get 1-click Bookmarklet</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  className="shrink-0 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-center"
+                >
+                  <Clipboard className="w-3.5 h-3.5" />
+                  <span>Paste from Clipboard & Extract</span>
+                </button>
               </div>
             )}
 
